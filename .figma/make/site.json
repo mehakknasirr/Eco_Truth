@@ -1,0 +1,10 @@
+{
+  "description": "Instantly verify environmental claims on products to identify genuine sustainability efforts or misleading greenwashing for informed eco-conscious choices.",
+  "robots": {
+    "index": false
+  },
+  "accessibility": {
+    "addBypassLinks": false,
+    "ignoreReducedMotion": false
+  }
+}
