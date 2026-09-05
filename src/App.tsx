@@ -89,97 +89,131 @@ interface ResultData {
   sources: { label: string; url: string }[];
 }
 
-// ── Mock analysis engine ───────────────────────────────────────────────────
-function analyzeClaim(claim: string): ResultData {
-  const lower = claim.toLowerCase();
+// ── Real API / Fallback Analysis Engine ────────────────────────────────────
+async function analyzeClaim(claim: string): Promise<ResultData> {
+  try {
+    const response = await fetch("http://127.0.0.1:8000/analyze-claim", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ claim }),
+    });
 
-  if (
-    lower.includes("usda organic") ||
-    lower.includes("certified b corp") ||
-    lower.includes("energy star") ||
-    lower.includes("fair trade certified") ||
-    lower.includes("rainforest alliance")
-  ) {
+    if (!response.ok) {
+      throw new Error("Backend offline or error");
+    }
+
+    const data = await response.json();
+    const result = data.data;
+
+    let verdict: VerdictType = "vague";
+    const rLower = (result.rating || "").toLowerCase();
+    if (rLower.includes("certif")) verdict = "verified";
+    else if (rLower.includes("red") || rLower.includes("false") || rLower.includes("misleading")) verdict = "redflag";
+
     return {
       claim,
-      verdict: "verified",
-      confidence: 91,
-      explanation:
-        "This claim references a recognized third-party certification body with publicly auditable standards. USDA Organic certification requires producers to meet strict USDA National Organic Program criteria and undergo annual inspections by accredited certifiers. Consumers can independently verify certification status through official registries.",
-      realClaimExample:
-        '"Certified USDA Organic — cert #ORG-2024-8821. Audited annually by Oregon Tilth Certified Organic. Full ingredient sourcing report available at [brand].com/transparency."',
-      realClaimLabel: "What verified looks like",
+      verdict,
+      confidence: 85,
+      explanation: result.explanation || "Analyzed via backend AI.",
+      realClaimExample: '"Transparent documentation verified by independent supply chain audits."',
+      realClaimLabel: "What a verifiable claim looks like",
       sources: [
-        { label: "USDA NOP Certified Operations Database", url: "#" },
-        { label: "FTC Green Guides — Certifications & Seals", url: "#" },
-        { label: "Ecolabel Index — USDA Organic", url: "#" },
+        { label: "FTC Green Guides — Environmental Marketing Claims", url: "#" },
+        { label: "ISO 14021: Environmental Labels & Declarations", url: "#" },
       ],
     };
-  }
+  } catch (err) {
+    // Fallback Mock analysis engine if backend is not running
+    const lower = claim.toLowerCase();
 
-  if (
-    lower.includes("carbon neutral") ||
-    lower.includes("net zero") ||
-    lower.includes("climate positive") ||
-    lower.includes("offset")
-  ) {
+    if (
+      lower.includes("usda organic") ||
+      lower.includes("certified b corp") ||
+      lower.includes("energy star") ||
+      lower.includes("fair trade certified") ||
+      lower.includes("rainforest alliance")
+    ) {
+      return {
+        claim,
+        verdict: "verified",
+        confidence: 91,
+        explanation:
+          "This claim references a recognized third-party certification body with publicly auditable standards. USDA Organic certification requires producers to meet strict USDA National Organic Program criteria and undergo annual inspections by accredited certifiers. Consumers can independently verify certification status through official registries.",
+        realClaimExample:
+          '"Certified USDA Organic — cert #ORG-2024-8821. Audited annually by Oregon Tilth Certified Organic. Full ingredient sourcing report available at [brand].com/transparency."',
+        realClaimLabel: "What verified looks like",
+        sources: [
+          { label: "USDA NOP Certified Operations Database", url: "#" },
+          { label: "FTC Green Guides — Certifications & Seals", url: "#" },
+          { label: "Ecolabel Index — USDA Organic", url: "#" },
+        ],
+      };
+    }
+
+    if (
+      lower.includes("carbon neutral") ||
+      lower.includes("net zero") ||
+      lower.includes("climate positive") ||
+      lower.includes("offset")
+    ) {
+      return {
+        claim,
+        verdict: "vague",
+        confidence: 62,
+        explanation:
+          "\"Carbon neutral\" and \"net zero\" claims are frequently used without independent verification or a disclosed methodology. Unless the brand names the specific carbon accounting standard, the certification body, and whether offsets or actual reductions drive the claim, consumers have no reliable way to verify it. Offset-based claims in particular are contested by emissions researchers.",
+        realClaimExample:
+          '"Scope 1 & 2 emissions reduced 47% since 2019. Remaining 12,400 tCO₂e offset via Gold Standard-verified reforestation projects in Uganda. Science-based target validated by SBTi. Full methodology: [brand].com/climate-report-2024."',
+        realClaimLabel: "What a verifiable carbon claim looks like",
+        sources: [
+          { label: "FTC Green Guides — Environmental Claims (16 CFR §260)", url: "#" },
+          { label: "Science Based Targets initiative (SBTi)", url: "#" },
+          { label: "Carbon Neutral Claims — UK CMA Guidance 2024", url: "#" },
+        ],
+      };
+    }
+
+    if (
+      lower.includes("eco-friendly") ||
+      lower.includes("natural") ||
+      lower.includes("green") ||
+      lower.includes("sustainable") ||
+      lower.includes("planet-friendly") ||
+      lower.includes("environmentally friendly")
+    ) {
+      return {
+        claim,
+        verdict: "redflag",
+        confidence: 88,
+        explanation:
+          "Terms like \"eco-friendly,\" \"natural,\" and \"sustainable\" are unregulated marketing language in most jurisdictions. No certification body, government agency, or independent standard governs their use — any brand can apply them to any product. The FTC's Green Guides explicitly flag these terms as likely to mislead consumers without specific, substantiated supporting evidence.",
+        realClaimExample:
+          '"Made with 94% post-consumer recycled paperboard. Certified by How2Recycle (label #HRC-4492). Printed with soy-based inks. Packaging recyclable in curbside programs reaching 78% of U.S. households."',
+        realClaimLabel: "Specific, substantiated packaging claim",
+        sources: [
+          { label: "FTC Green Guides — Unqualified General Claims", url: "#" },
+          { label: "Greenwashing Cases: EU Omnibus Directive 2024", url: "#" },
+          { label: "Terrachoice \"Sins of Greenwashing\" Framework", url: "#" },
+        ],
+      };
+    }
+
     return {
       claim,
       verdict: "vague",
-      confidence: 62,
+      confidence: 55,
       explanation:
-        "\"Carbon neutral\" and \"net zero\" claims are frequently used without independent verification or a disclosed methodology. Unless the brand names the specific carbon accounting standard, the certification body, and whether offsets or actual reductions drive the claim, consumers have no reliable way to verify it. Offset-based claims in particular are contested by emissions researchers.",
+        "This claim could not be matched to a known certification standard or registry. It may be genuine but lacks the specificity needed for independent verification. Look for a named certifying body, an audit date, and a publicly accessible certificate number to substantiate environmental claims of this type.",
       realClaimExample:
-        '"Scope 1 & 2 emissions reduced 47% since 2019. Remaining 12,400 tCO₂e offset via Gold Standard-verified reforestation projects in Uganda. Science-based target validated by SBTi. Full methodology: [brand].com/climate-report-2024."',
-      realClaimLabel: "What a verifiable carbon claim looks like",
+        '"Packaging contains 80% post-consumer recycled content, certified by SCS Global Services (cert #SCS-COC-005678). Chain of custody documentation available on request."',
+      realClaimLabel: "What a specific, checkable claim looks like",
       sources: [
-        { label: "FTC Green Guides — Environmental Claims (16 CFR §260)", url: "#" },
-        { label: "Science Based Targets initiative (SBTi)", url: "#" },
-        { label: "Carbon Neutral Claims — UK CMA Guidance 2024", url: "#" },
+        { label: "FTC Green Guides — Environmental Marketing Claims", url: "#" },
+        { label: "ISO 14021: Environmental Labels & Declarations", url: "#" },
+        { label: "Green Claims Code — UK Competition & Markets Authority", url: "#" },
       ],
     };
   }
-
-  if (
-    lower.includes("eco-friendly") ||
-    lower.includes("natural") ||
-    lower.includes("green") ||
-    lower.includes("sustainable") ||
-    lower.includes("planet-friendly") ||
-    lower.includes("environmentally friendly")
-  ) {
-    return {
-      claim,
-      verdict: "redflag",
-      confidence: 88,
-      explanation:
-        "Terms like \"eco-friendly,\" \"natural,\" and \"sustainable\" are unregulated marketing language in most jurisdictions. No certification body, government agency, or independent standard governs their use — any brand can apply them to any product. The FTC's Green Guides explicitly flag these terms as likely to mislead consumers without specific, substantiated supporting evidence.",
-      realClaimExample:
-        '"Made with 94% post-consumer recycled paperboard. Certified by How2Recycle (label #HRC-4492). Printed with soy-based inks. Packaging recyclable in curbside programs reaching 78% of U.S. households."',
-      realClaimLabel: "Specific, substantiated packaging claim",
-      sources: [
-        { label: "FTC Green Guides — Unqualified General Claims", url: "#" },
-        { label: "Greenwashing Cases: EU Omnibus Directive 2024", url: "#" },
-        { label: "Terrachoice \"Sins of Greenwashing\" Framework", url: "#" },
-      ],
-    };
-  }
-
-  return {
-    claim,
-    verdict: "vague",
-    confidence: 55,
-    explanation:
-      "This claim could not be matched to a known certification standard or registry. It may be genuine but lacks the specificity needed for independent verification. Look for a named certifying body, an audit date, and a publicly accessible certificate number to substantiate environmental claims of this type.",
-    realClaimExample:
-      '"Packaging contains 80% post-consumer recycled content, certified by SCS Global Services (cert #SCS-COC-005678). Chain of custody documentation available on request."',
-    realClaimLabel: "What a specific, checkable claim looks like",
-    sources: [
-      { label: "FTC Green Guides — Environmental Marketing Claims", url: "#" },
-      { label: "ISO 14021: Environmental Labels & Declarations", url: "#" },
-      { label: "Green Claims Code — UK Competition & Markets Authority", url: "#" },
-    ],
-  };
 }
 
 // ── Shared components ──────────────────────────────────────────────────────
@@ -523,17 +557,16 @@ function LoadingScreen() {
   );
 }
 
-// ── App ────────────────────────────────────────────────────────────────────
+// ── App ────────────────────────────────────────────────2────────────────────
 export default function App() {
   const [screen, setScreen] = useState<"home" | "loading" | "results">("home");
   const [result, setResult] = useState<ResultData | null>(null);
 
-  function handleSubmit(claim: string) {
+  async function handleSubmit(claim: string) {
     setScreen("loading");
-    setTimeout(() => {
-      setResult(analyzeClaim(claim));
-      setScreen("results");
-    }, 1400);
+    const data = await analyzeClaim(claim);
+    setResult(data);
+    setScreen("results");
   }
 
   function handleReset() {
